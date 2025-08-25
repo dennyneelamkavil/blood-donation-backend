@@ -287,7 +287,7 @@ export async function getDonors(req, res, next) {
         sortSpec.createdAt = -1;
     }
     const donors = await UserModel.find(query)
-      .select("-__v -password")
+      .select("-__v -password -lastLogin -createdAt -updatedAt")
       .collation({ locale: "en", strength: 2 }) // Case-insensitive sorting
       .sort(sortSpec)
       .skip((page - 1) * limit)
