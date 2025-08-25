@@ -251,3 +251,61 @@ export async function getUser(req, res, next) {
     next(err);
   }
 }
+
+export async function getDonors(req, res, next) {
+  try {
+    let page = parseInt(req.query.page) || 1;
+    let limit = parseInt(req.query.limit) || 10;
+    const search = req.query.search || "";
+    const sortOrder = req.query.sortOrder || "latest";
+    // Ensure page and limit are >= 1
+    page = page < 1 ? 1 : page;
+    limit = limit < 1 ? 10 : limit;
+
+    const query = {
+      isDonor: true,
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+      ],
+    };
+    const sortSpec = {};
+    switch (sortOrder) {
+      case "oldest":
+        sortSpec.createdAt = 1;
+        break;
+      case "latest":
+        sortSpec.createdAt = -1;
+        break;
+      case "nameAsc":
+        sortSpec.name = 1;
+        break;
+      case "nameDesc":
+        sortSpec.name = -1;
+        break;
+      default:
+        sortSpec.createdAt = -1;
+    }
+    const donors = await UserModel.find(query)
+      .select("-__v -password")
+      .collation({ locale: "en", strength: 2 }) // Case-insensitive sorting
+      .sort(sortSpec)
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await UserModel.countDocuments({ isDonor: true });
+    const filteredCount = await UserModel.countDocuments(query);
+    const totalPages = Math.ceil(filteredCount / limit);
+
+    return res.status(200).json({
+      total,
+      filteredCount,
+      page,
+      totalPages,
+      limit,
+      donors,
+    });
+  } catch (err) {
+    next(err);
+  }
+}

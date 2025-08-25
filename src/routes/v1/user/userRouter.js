@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   deleteUser,
+  getDonors,
   getUser,
   registerUser,
   updateUser,
@@ -23,5 +24,7 @@ userRouter.use(authenticate);
 userRouter.get("/get", getUser);
 userRouter.put("/update", profilePicUpload.single("profilePic"), updateUser);
 userRouter.delete("/delete", deleteUser);
+
+userRouter.get("/get-donors", getDonors);
 
 export default userRouter;
