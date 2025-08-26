@@ -2,14 +2,17 @@ import { Router } from "express";
 import {
   adminLogin,
   changeAdminPassword,
-  deleteUser,
+  createUser,
+  deleteUserById,
   getCurrentAdmin,
   getDashboardData,
-  getUser,
+  getUserById,
   getUsers,
+  updateUserById,
 } from "../../../controllers/admin/adminController.js";
 import { seedAdmin } from "../../../utils/adminSeeder.js";
 import { authenticate } from "../../../middleware/authMiddleware.js";
+import { profilePicUpload } from "../../../utils/multerConfig.js";
 
 const adminRouter = Router();
 
@@ -23,8 +26,18 @@ adminRouter.use(authenticate);
 adminRouter.get("/get", getCurrentAdmin);
 adminRouter.get("/dashboard", getDashboardData);
 adminRouter.get("/get-users", getUsers);
-adminRouter.get("/get-user/:userId", getUser);
-adminRouter.delete("/delete-user/:userId", deleteUser);
+adminRouter.get("/get-user/:userId", getUserById);
+adminRouter.post(
+  "/create-user",
+  profilePicUpload.single("profilePic"),
+  createUser
+);
+adminRouter.put(
+  "/update-user/:userId",
+  profilePicUpload.single("profilePic"),
+  updateUserById
+);
+adminRouter.delete("/delete-user/:userId", deleteUserById);
 
 adminRouter.put("/change-password", changeAdminPassword);
 
