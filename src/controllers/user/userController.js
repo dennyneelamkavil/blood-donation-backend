@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import path from "path";
 import fs from "fs";
 import UserModel from "../../models/userModel.js";
-import mongoose from "mongoose";
 
 const VALID_BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const VALID_GENDERS = ["male", "female", "other"];
@@ -29,6 +28,8 @@ export async function userLogin(req, res, next) {
         process.env.JWT_SECRET,
         { expiresIn: "7d" }
       );
+      user.lastLogin = Date.now();
+      await user.save();
 
       return res.status(200).json({
         token,
@@ -191,8 +192,7 @@ export async function updateUser(req, res, next) {
       updateData.lastDonationDate = new Date(lastDonationDate);
 
     if (password) {
-      const saltRounds = 10;
-      updateData.password = await bcrypt.hash(password, saltRounds);
+      updateData.password = await bcrypt.hash(password, 10);
     }
 
     if (req.file) {
@@ -210,7 +210,7 @@ export async function updateUser(req, res, next) {
     const updatedUser = await UserModel.findByIdAndUpdate(userId, updateData, {
       new: true,
       runValidators: true,
-    }).select("-__v -password");
+    }).select("-__v -password -createdAt -updatedAt");
 
     return res.status(200).json({
       message: "User updated successfully",
@@ -228,6 +228,12 @@ export async function deleteUser(req, res, next) {
     if (!deleted) {
       return res.status(404).json({ message: "User not found" });
     }
+    if (deleted.profilePic) {
+      const oldImagePath = path.join(process.cwd(), deleted.profilePic);
+      fs.unlink(oldImagePath, (err) => {
+        if (err) console.warn("Failed to delete old image:", err.message);
+      });
+    }
 
     return res.status(200).json({ message: "User deleted successfully" });
   } catch (err) {
@@ -240,8 +246,7 @@ export async function getUser(req, res, next) {
     const userId = req.user._id;
     const user = await UserModel.findOne({
       _id: userId,
-      isDeleted: false,
-    }).select("-__v -password");
+    }).select("-__v -password -createdAt -updatedAt");
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -258,6 +263,7 @@ export async function getDonors(req, res, next) {
     let limit = parseInt(req.query.limit) || 10;
     const search = req.query.search || "";
     const sortOrder = req.query.sortOrder || "latest";
+    const bloodGroup = req.query.bloodGroup || "";
     // Ensure page and limit are >= 1
     page = page < 1 ? 1 : page;
     limit = limit < 1 ? 10 : limit;
@@ -269,6 +275,14 @@ export async function getDonors(req, res, next) {
         { phone: { $regex: search, $options: "i" } },
       ],
     };
+
+    if (bloodGroup && !VALID_BLOOD_GROUPS.includes(bloodGroup)) {
+      return res.status(400).json({ message: "Invalid blood group filter" });
+    }
+    if (bloodGroup) {
+      query.bloodGroup = bloodGroup;
+    }
+
     const sortSpec = {};
     switch (sortOrder) {
       case "oldest":
@@ -305,6 +319,32 @@ export async function getDonors(req, res, next) {
       limit,
       donors,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function changeUserPassword(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+    const user = await UserModel.findById(req.user._id);
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ message: "Missing current or new password" });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid current password" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    return res.status(200).json({ message: "Password changed successfully" });
   } catch (err) {
     next(err);
   }

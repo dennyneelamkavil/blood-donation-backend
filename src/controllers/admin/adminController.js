@@ -166,7 +166,7 @@ export async function deleteUser(req, res, next) {
   }
 }
 
-export async function changePassword(req, res, next) {
+export async function changeAdminPassword(req, res, next) {
   try {
     if (!req.admin) {
       return res.status(401).json({ message: "Not authorized" });

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import {
   adminLogin,
-  changePassword,
+  changeAdminPassword,
   deleteUser,
   getCurrentAdmin,
   getDashboardData,
@@ -26,6 +26,6 @@ adminRouter.get("/get-users", getUsers);
 adminRouter.get("/get-user/:userId", getUser);
 adminRouter.delete("/delete-user/:userId", deleteUser);
 
-adminRouter.put("/change-password", changePassword);
+adminRouter.put("/change-password", changeAdminPassword);
 
 export default adminRouter;

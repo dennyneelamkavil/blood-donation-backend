@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  changeUserPassword,
   deleteUser,
   getDonors,
   getUser,
@@ -21,6 +22,7 @@ userRouter.post(
 
 userRouter.use(authenticate);
 
+userRouter.put("/change-password", changeUserPassword);
 userRouter.get("/get", getUser);
 userRouter.put("/update", profilePicUpload.single("profilePic"), updateUser);
 userRouter.delete("/delete", deleteUser);
