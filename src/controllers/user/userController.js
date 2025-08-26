@@ -95,7 +95,7 @@ export async function registerUser(req, res, next) {
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       gender: gender || undefined,
       bloodGroup,
-      isDonor: typeof isDonor !== "undefined" ? !!isDonor : false,
+      isDonor: typeof isDonor !== "undefined" ? isDonor : false,
       lastDonationDate: lastDonationDate
         ? new Date(lastDonationDate)
         : undefined,
@@ -186,7 +186,7 @@ export async function updateUser(req, res, next) {
     if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
     if (gender) updateData.gender = gender;
     if (place) updateData.place = place;
-    if (typeof isDonor !== "undefined") updateData.isDonor = !!isDonor;
+    if (typeof isDonor !== "undefined") updateData.isDonor = isDonor;
     if (bloodGroup) updateData.bloodGroup = bloodGroup;
     if (lastDonationDate)
       updateData.lastDonationDate = new Date(lastDonationDate);

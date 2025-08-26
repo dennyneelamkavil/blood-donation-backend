@@ -119,6 +119,9 @@ export async function getUsers(req, res, next) {
       case "nameDesc":
         sortSpec.name = -1;
         break;
+      case "donorsFirst":
+        sortSpec.isDonor = -1;
+        break;
       default:
         sortSpec.createdAt = -1;
     }
@@ -130,11 +133,13 @@ export async function getUsers(req, res, next) {
       .limit(limit);
 
     const total = await UserModel.countDocuments();
+    const donorCount = await UserModel.countDocuments({ isDonor: true });
     const filteredCount = await UserModel.countDocuments(query);
     const totalPages = Math.ceil(filteredCount / limit);
 
     return res.status(200).json({
       total,
+      donorCount,
       filteredCount,
       page,
       totalPages,
@@ -215,7 +220,7 @@ export async function createUser(req, res, next) {
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       gender: gender || undefined,
       bloodGroup,
-      isDonor: typeof isDonor !== "undefined" ? !!isDonor : false,
+      isDonor: typeof isDonor !== "undefined" ? isDonor : false,
       lastDonationDate: lastDonationDate
         ? new Date(lastDonationDate)
         : undefined,
@@ -306,7 +311,7 @@ export async function updateUserById(req, res, next) {
     if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
     if (gender) updateData.gender = gender;
     if (place) updateData.place = place;
-    if (typeof isDonor !== "undefined") updateData.isDonor = !!isDonor;
+    if (typeof isDonor !== "undefined") updateData.isDonor = isDonor;
     if (bloodGroup) updateData.bloodGroup = bloodGroup;
     if (lastDonationDate)
       updateData.lastDonationDate = new Date(lastDonationDate);
