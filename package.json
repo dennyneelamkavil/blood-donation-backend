@@ -1,5 +1,5 @@
 {
-  "name": "bathao-backend",
+  "name": "blood-donors-app-backend",
   "version": "1.0.0",
   "main": "src/index.js",
   "scripts": {
