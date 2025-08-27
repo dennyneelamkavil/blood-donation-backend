@@ -18,28 +18,89 @@ export async function userLogin(req, res, next) {
     }
 
     const user = await UserModel.findOne({ phone });
-    if (user) {
-      const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch)
-        return res.status(401).json({ message: "Invalid credentials" });
-
-      const token = jwt.sign(
-        { id: user._id, type: "user" },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
-      user.lastLogin = Date.now();
-      await user.save();
-
-      return res.status(200).json({
-        token,
-        role: "user",
-        type: "user",
-        message: "User login successful",
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+    if (!user.password) {
+      return res.status(428).json({
+        message: "Password not set for this account. Please set a password",
+        setupRequired: true,
       });
     }
 
-    return res.status(401).json({ message: "Invalid credentials" });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch)
+      return res.status(401).json({ message: "Invalid credentials" });
+
+    const token = jwt.sign(
+      { id: user._id, type: "user" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    user.lastLogin = Date.now();
+    await user.save();
+
+    return res.status(200).json({
+      token,
+      role: "user",
+      type: "user",
+      message: "User login successful",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function setPassword(req, res, next) {
+  try {
+    const { phone, password } = req.body;
+
+    if (!phone || !password) {
+      return res
+        .status(400)
+        .json({ message: "phone and password are required" });
+    }
+
+    if (!/^\d{10}$/.test(phone)) {
+      return res
+        .status(400)
+        .json({ message: "Phone number must be exactly 10 digits" });
+    }
+
+    if (String(password).length < 6) {
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 6 characters" });
+    }
+
+    const user = await UserModel.findOne({ phone });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.password) {
+      return res.status(400).json({
+        message:
+          "Password already set. Use login or the change-password options.",
+      });
+    }
+
+    user.password = await bcrypt.hash(password, 10);
+    user.lastLogin = Date.now();
+    await user.save();
+
+    const token = jwt.sign(
+      { id: user._id, type: "user" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.status(200).json({
+      token,
+      role: "user",
+      type: "user",
+      message: "Password set successfully",
+    });
   } catch (err) {
     next(err);
   }
@@ -59,10 +120,10 @@ export async function registerUser(req, res, next) {
       lastDonationDate,
     } = req.body;
 
-    if (!phone || !name || !bloodGroup) {
-      return res
-        .status(400)
-        .json({ message: "phone, name and blood group are required" });
+    if (!phone || !name || !bloodGroup || !password) {
+      return res.status(400).json({
+        message: "phone, name, blood group and password are required",
+      });
     }
 
     if (!/^\d{10}$/.test(phone)) {

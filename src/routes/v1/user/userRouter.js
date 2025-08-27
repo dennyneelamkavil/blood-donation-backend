@@ -5,6 +5,7 @@ import {
   getDonors,
   getUser,
   registerUser,
+  setPassword,
   updateUser,
   userLogin,
 } from "../../../controllers/user/userController.js";
@@ -19,6 +20,7 @@ userRouter.post(
   profilePicUpload.single("profilePic"),
   registerUser
 );
+userRouter.post("/set-password", setPassword);
 
 userRouter.use(authenticate);
 
