@@ -8,7 +8,7 @@ publicRouter.get("/test", (req, res) => {
     message: "Test route is working!",
     timestamp: new Date().toISOString(),
     version: "v1",
-    buildTag: "Initial build",
+    buildTag: "Password Status",
   });
 });
 

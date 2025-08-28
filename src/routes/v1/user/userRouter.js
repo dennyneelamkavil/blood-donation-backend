@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   changeUserPassword,
+  checkPasswordStatus,
   deleteUser,
   getDonors,
   getUser,
@@ -21,6 +22,7 @@ userRouter.post(
   registerUser
 );
 userRouter.post("/set-password", setPassword);
+userRouter.get("/password-status", checkPasswordStatus);
 
 userRouter.use(authenticate);
 

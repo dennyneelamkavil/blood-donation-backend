@@ -51,6 +51,40 @@ export async function userLogin(req, res, next) {
   }
 }
 
+export async function checkPasswordStatus(req, res, next) {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ message: "Phone number is required" });
+    }
+
+    if (!/^\d{10}$/.test(phone)) {
+      return res
+        .status(400)
+        .json({ message: "Phone number must be exactly 10 digits" });
+    }
+
+    const user = await UserModel.findOne({ phone });
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const passwordSet = !!user.password;
+
+    return res.status(200).json({
+      phone,
+      passwordSet,
+      message: passwordSet
+        ? "Password is already set for this user."
+        : "Password not set for this user.",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function setPassword(req, res, next) {
   try {
     const { phone, password } = req.body;
