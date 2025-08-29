@@ -53,7 +53,7 @@ export async function userLogin(req, res, next) {
 
 export async function checkPasswordStatus(req, res, next) {
   try {
-    const { phone } = req.body;
+    const phone = req.query.phone;
 
     if (!phone) {
       return res.status(400).json({ message: "Phone number is required" });
