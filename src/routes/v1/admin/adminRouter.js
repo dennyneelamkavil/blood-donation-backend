@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   adminLogin,
   changeAdminPassword,
@@ -8,6 +9,7 @@ import {
   getDashboardData,
   getUserById,
   getUsers,
+  importUsersFromExcel,
   updateUserById,
 } from "../../../controllers/admin/adminController.js";
 import { seedAdmin } from "../../../utils/adminSeeder.js";
@@ -15,6 +17,8 @@ import { authenticate } from "../../../middleware/authMiddleware.js";
 import { profilePicUpload } from "../../../utils/multerConfig.js";
 
 const adminRouter = Router();
+
+const upload = multer({ dest: "tmp/uploads" });
 
 // Seed default admin - "admin"
 // seedAdmin();
@@ -40,5 +44,7 @@ adminRouter.put(
 adminRouter.delete("/delete-user/:userId", deleteUserById);
 
 adminRouter.put("/change-password", changeAdminPassword);
+
+adminRouter.post("/import-users", upload.single("file"), importUsersFromExcel);
 
 export default adminRouter;

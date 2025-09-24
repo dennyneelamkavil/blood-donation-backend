@@ -2,12 +2,24 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import path from "path";
 import fs from "fs";
+import xlsx from "xlsx";
 import AdminModel from "../../models/adminModel.js";
 import UserModel from "../../models/userModel.js";
 import mongoose from "mongoose";
 
 const VALID_BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const VALID_GENDERS = ["male", "female", "other"];
+
+const ACCEPTED_HEADERS = [
+  "phone", // required (10 digits)
+  "name", // required
+  "place", // optional
+  "dateOfBirth", // optional (YYYY-MM-DD)
+  "gender", // optional (male|female|other)
+  "bloodGroup", // required (A+/A-/B+/B-/AB+/AB-/O+/O-)
+  "isDonor", // optional (true/false)
+  "lastDonationDate", // optional (YYYY-MM-DD)
+];
 
 export async function adminLogin(req, res, next) {
   try {
@@ -224,7 +236,6 @@ export async function createUser(req, res, next) {
       lastDonationDate: lastDonationDate
         ? new Date(lastDonationDate)
         : undefined,
-      lastLogin: Date.now(),
     };
 
     if (req.file) {
@@ -391,6 +402,138 @@ export async function changeAdminPassword(req, res, next) {
     await admin.save();
     return res.status(200).json({ message: "Password changed successfully" });
   } catch (err) {
+    next(err);
+  }
+}
+
+export async function importUsersFromExcel(req, res, next) {
+  const cleanup = () => {
+    if (req.file) fs.unlink(req.file.path, () => {});
+  };
+
+  try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
+    const wb = xlsx.readFile(req.file.path, { cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    let rows = xlsx.utils.sheet_to_json(ws, { defval: "" });
+
+    // check required headers
+    const required = ["phone", "name", "bloodGroup"];
+    const fileHeaders = rows.length ? Object.keys(rows[0]) : [];
+    for (const r of required) {
+      if (!fileHeaders.includes(r)) {
+        cleanup();
+        return res.status(400).json({
+          message: `Missing required column "${r}". Accepted headers: ${ACCEPTED_HEADERS.join(
+            ", "
+          )}`,
+        });
+      }
+    }
+
+    const toSet = new Set();
+    const allPhones = rows
+      .map((r) => String(r.phone || "").trim())
+      .filter(Boolean);
+    const existing = await UserModel.find(
+      { phone: { $in: [...new Set(allPhones)] } },
+      { phone: 1 }
+    ).lean();
+    const existingSet = new Set(existing.map((u) => u.phone));
+
+    const asBool = (v) => {
+      if (typeof v === "boolean") return v;
+      const s = String(v).trim().toLowerCase();
+      return s === "true" || s === "1" || s === "yes";
+    };
+    const parseDate = (v) => {
+      if (!v) return undefined;
+      if (v instanceof Date && !isNaN(v)) return v;
+      const d = new Date(String(v));
+      return isNaN(d.getTime()) ? undefined : d;
+    };
+
+    const ops = [];
+    const errors = [];
+    let inserted = 0;
+    let skippedExistingDB = 0;
+    let skippedDuplicateInFile = 0;
+
+    rows.forEach((r, i) => {
+      const rowNum = i + 2;
+      const phone = String(r.phone || "").trim();
+      const name = String(r.name || "").trim();
+      const bloodGroup = String(r.bloodGroup || "")
+        .trim()
+        .toUpperCase();
+      const place = String(r.place || "").trim() || undefined;
+      const dateOfBirth = parseDate(r.dateOfBirth);
+      const gender = String(r.gender || "")
+        .trim()
+        .toLowerCase();
+      const isDonor = asBool(r.isDonor || false);
+      const lastDonationDate = parseDate(r.lastDonationDate);
+
+      const rowErr = [];
+      if (!name) rowErr.push("name is required");
+      if (!phone) rowErr.push("phone is required");
+      if (!bloodGroup || !VALID_BLOOD_GROUPS.includes(bloodGroup))
+        rowErr.push("invalid blood group");
+      if (gender && !VALID_GENDERS.includes(gender))
+        rowErr.push("invalid gender");
+
+      if (rowErr.length) {
+        errors.push({ row: rowNum, phone, errors: rowErr });
+        return;
+      }
+
+      if (existingSet.has(phone)) {
+        skippedExistingDB++;
+        return;
+      }
+      if (toSet.has(phone)) {
+        skippedDuplicateInFile++;
+        return;
+      }
+      toSet.add(phone);
+
+      const doc = {
+        phone,
+        name,
+        place,
+        dateOfBirth,
+        gender: gender || undefined,
+        bloodGroup,
+        isDonor,
+        lastDonationDate,
+      };
+
+      ops.push({ insertOne: { document: doc } });
+    });
+
+    if (ops.length) {
+      const result = await UserModel.bulkWrite(ops, { ordered: false });
+      inserted = result.insertedCount || 0;
+    }
+
+    cleanup();
+    return res.status(200).json({
+      message: "Import completed",
+      summary: {
+        totalRows: rows.length,
+        inserted,
+        skippedExistingDB,
+        skippedDuplicateInFile,
+        invalidRows: errors.length,
+      },
+      errors,
+      acceptedHeaders: ACCEPTED_HEADERS,
+    });
+  } catch (err) {
+    try {
+      if (req.file) fs.unlinkSync(req.file.path);
+    } catch {}
     next(err);
   }
 }
