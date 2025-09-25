@@ -414,9 +414,9 @@ export async function importUsersFromExcel(req, res, next) {
   try {
     if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-    const wb = xlsx.readFile(req.file.path, { cellDates: true });
+    const wb = xlsx.readFile(req.file.path, { cellDates: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    let rows = xlsx.utils.sheet_to_json(ws, { defval: "" });
+    let rows = xlsx.utils.sheet_to_json(ws, { defval: "", raw: true });
 
     // check required headers
     const required = ["phone", "name", "bloodGroup"];
@@ -447,11 +447,64 @@ export async function importUsersFromExcel(req, res, next) {
       const s = String(v).trim().toLowerCase();
       return s === "true" || s === "1" || s === "yes";
     };
+
+    const isDate1904 = !!(
+      wb.Workbook &&
+      wb.Workbook.WBProps &&
+      wb.Workbook.WBProps.date1904
+    );
     const parseDate = (v) => {
-      if (!v) return undefined;
-      if (v instanceof Date && !isNaN(v)) return v;
-      const d = new Date(String(v));
-      return isNaN(d.getTime()) ? undefined : d;
+      if (v == null || v === "") return undefined;
+
+      // A) Excel serial number (best case)
+      if (typeof v === "number") {
+        const o = xlsx.SSF.parse_date_code(v, { date1904: isDate1904 });
+        if (!o) return undefined;
+        // 3) Store as UTC-midnight so the calendar day is stable everywhere
+        return new Date(Date.UTC(o.y, o.m - 1, o.d));
+        // If you prefer a pure date string, return:
+        // return `${o.y}-${String(o.m).padStart(2,'0')}-${String(o.d).padStart(2,'0')}`;
+      }
+
+      // B) If something still came through as a JS Date (e.g., copied from Google Sheets)
+      if (v instanceof Date && !isNaN(v)) {
+        // Round to the nearest day in local time to kill 23:59:50 / 00:00:10 glitches
+        const d2 = new Date(v.getTime() + 12 * 60 * 60 * 1000);
+        return new Date(
+          Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate())
+        );
+      }
+
+      // C) If it's a string like "8/19/1990" or "1990-08-19" (fallback)
+      const s = String(v).trim();
+
+      // ISO YYYY-MM-DD
+      const mIso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (mIso) return new Date(Date.UTC(+mIso[1], +mIso[2] - 1, +mIso[3]));
+
+      // mm/dd/yyyy or dd/mm/yyyy -> resolve by heuristics
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m) {
+        let [_, a, b, c] = m;
+        const yy = +c;
+        const year = c.length === 2 ? (yy < 50 ? 2000 + yy : 1900 + yy) : +c;
+        let month, day;
+        if (+a > 12) {
+          day = +a;
+          month = +b;
+        } // dd/mm/yyyy
+        else if (+b > 12) {
+          month = +a;
+          day = +b;
+        } // mm/dd/yyyy
+        else {
+          month = +a;
+          day = +b;
+        } // default: mm/dd/yyyy
+        return new Date(Date.UTC(year, month - 1, day));
+      }
+
+      return undefined;
     };
 
     const ops = [];
