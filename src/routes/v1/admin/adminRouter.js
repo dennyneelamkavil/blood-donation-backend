@@ -9,9 +9,9 @@ import {
   getDashboardData,
   getUserById,
   getUsers,
-  importUsersFromExcel,
   updateUserById,
 } from "../../../controllers/admin/adminController.js";
+import { importUsersFromExcel } from "../../../controllers/admin/importController.js";
 import { seedAdmin } from "../../../utils/adminSeeder.js";
 import { authenticate } from "../../../middleware/authMiddleware.js";
 import { profilePicUpload } from "../../../utils/multerConfig.js";
