@@ -13,6 +13,7 @@ const VALID_GENDERS = ["male", "female", "other"];
 const ACCEPTED_HEADERS = [
   "phone", // required (10 digits)
   "name", // required
+  "address", // optional
   "place", // optional
   "dateOfBirth", // optional (YYYY-MM-DD)
   "gender", // optional (male|female|other)
@@ -188,6 +189,7 @@ export async function createUser(req, res, next) {
       phone,
       name,
       password,
+      address,
       place,
       dateOfBirth,
       gender,
@@ -228,6 +230,7 @@ export async function createUser(req, res, next) {
     const newUserData = {
       phone,
       name,
+      address: address || undefined,
       place: place || undefined,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       gender: gender || undefined,
@@ -279,6 +282,7 @@ export async function updateUserById(req, res, next) {
       dateOfBirth,
       gender,
       phone,
+      address,
       place,
       bloodGroup,
       isDonor,
@@ -321,6 +325,7 @@ export async function updateUserById(req, res, next) {
     if (name) updateData.name = name;
     if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
     if (gender) updateData.gender = gender;
+    if (address) updateData.address = address;
     if (place) updateData.place = place;
     if (typeof isDonor !== "undefined") updateData.isDonor = isDonor;
     if (bloodGroup) updateData.bloodGroup = bloodGroup;
@@ -520,6 +525,7 @@ export async function importUsersFromExcel(req, res, next) {
       const bloodGroup = String(r.bloodGroup || "")
         .trim()
         .toUpperCase();
+      const address = String(r.address || "").trim() || undefined;
       const place = String(r.place || "").trim() || undefined;
       const dateOfBirth = parseDate(r.dateOfBirth);
       const gender = String(r.gender || "")
@@ -554,6 +560,7 @@ export async function importUsersFromExcel(req, res, next) {
       const doc = {
         phone,
         name,
+        address,
         place,
         dateOfBirth,
         gender: gender || undefined,

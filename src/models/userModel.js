@@ -18,6 +18,10 @@ const userSchema = new Schema(
     password: {
       type: String,
     },
+    address: {
+      type: String,
+      trim: true,
+    },
     place: {
       type: String,
       trim: true,

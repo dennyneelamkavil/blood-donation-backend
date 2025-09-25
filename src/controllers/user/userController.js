@@ -146,6 +146,7 @@ export async function registerUser(req, res, next) {
       phone,
       name,
       password,
+      address,
       place,
       dateOfBirth,
       gender,
@@ -186,6 +187,7 @@ export async function registerUser(req, res, next) {
     const newUserData = {
       phone,
       name,
+      address: address || undefined,
       place: place || undefined,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
       gender: gender || undefined,
@@ -238,6 +240,7 @@ export async function updateUser(req, res, next) {
       dateOfBirth,
       gender,
       phone,
+      address,
       place,
       bloodGroup,
       isDonor,
@@ -280,6 +283,7 @@ export async function updateUser(req, res, next) {
     if (name) updateData.name = name;
     if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
     if (gender) updateData.gender = gender;
+    if (address) updateData.address = address;
     if (place) updateData.place = place;
     if (typeof isDonor !== "undefined") updateData.isDonor = isDonor;
     if (bloodGroup) updateData.bloodGroup = bloodGroup;
