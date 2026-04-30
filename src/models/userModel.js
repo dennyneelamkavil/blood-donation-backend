@@ -4,20 +4,30 @@ const { Schema, model } = mongoose;
 
 const userSchema = new Schema(
   {
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    email: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
     phone: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
       trim: true,
     },
+
     name: {
       type: String,
-      trim: true,
       required: true,
+      trim: true,
     },
-    password: {
-      type: String,
-    },
+
     address: {
       type: String,
       trim: true,
@@ -36,7 +46,6 @@ const userSchema = new Schema(
     bloodGroup: {
       type: String,
       enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"],
-      required: true,
       index: true,
     },
     isDonor: {
@@ -52,10 +61,15 @@ const userSchema = new Schema(
     lastLogin: {
       type: Date,
     },
+
+    isProfileComplete: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const UserModel = model("User", userSchema);

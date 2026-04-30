@@ -1,228 +1,139 @@
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 import path from "path";
 import fs from "fs";
 import UserModel from "../../models/userModel.js";
+import { OAuth2Client } from "google-auth-library";
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const VALID_BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
 const VALID_GENDERS = ["male", "female", "other"];
 
-export async function userLogin(req, res, next) {
+export async function googleLogin(req, res, next) {
   try {
-    const { phone, password } = req.body;
+    const { idToken } = req.body;
 
-    if (!phone || !password) {
-      return res
-        .status(400)
-        .json({ message: "Phone number and password are required" });
+    if (!idToken) {
+      return res.status(400).json({ message: "idToken required" });
     }
 
-    const user = await UserModel.findOne({ phone });
-    if (!user) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-    if (!user.password) {
-      return res.status(428).json({
-        message: "Password not set for this account. Please set a password",
-        setupRequired: true,
-      });
-    }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(401).json({ message: "Invalid credentials" });
-
-    const token = jwt.sign(
-      { id: user._id, type: "user" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-    user.lastLogin = Date.now();
-    await user.save();
-
-    return res.status(200).json({
-      token,
-      role: "user",
-      type: "user",
-      message: "User login successful",
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
     });
-  } catch (err) {
-    next(err);
-  }
-}
 
-export async function checkPasswordStatus(req, res, next) {
-  try {
-    const phone = req.query.phone;
+    const payload = ticket.getPayload();
 
-    if (!phone) {
-      return res.status(400).json({ message: "Phone number is required" });
-    }
+    const googleId = payload.sub;
+    const email = payload.email;
+    const name = payload.name;
+    const profilePic = payload.picture;
 
-    if (!/^\d{10}$/.test(phone)) {
-      return res
-        .status(400)
-        .json({ message: "Phone number must be exactly 10 digits" });
-    }
-
-    const user = await UserModel.findOne({ phone });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const passwordSet = !!user.password;
-
-    return res.status(200).json({
-      phone,
-      passwordSet,
-      message: passwordSet
-        ? "Password is already set for this user."
-        : "Password not set for this user.",
+    let user = await UserModel.findOne({
+      $or: [{ googleId }, { email }],
     });
-  } catch (err) {
-    next(err);
-  }
-}
 
-export async function setPassword(req, res, next) {
-  try {
-    const { phone, password } = req.body;
-
-    if (!phone || !password) {
-      return res
-        .status(400)
-        .json({ message: "phone and password are required" });
-    }
-
-    if (!/^\d{10}$/.test(phone)) {
-      return res
-        .status(400)
-        .json({ message: "Phone number must be exactly 10 digits" });
-    }
-
-    if (String(password).length < 6) {
-      return res
-        .status(400)
-        .json({ message: "Password must be at least 6 characters" });
-    }
-
-    const user = await UserModel.findOne({ phone });
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (user.password) {
-      return res.status(400).json({
-        message:
-          "Password already set. Use login or the change-password options.",
+      user = new UserModel({
+        googleId,
+        email,
+        name,
+        profilePic,
+        lastLogin: Date.now(),
       });
+    } else {
+      // ✅ Sync latest Google info
+      user.googleId = googleId;
+      user.name = name || user.name;
+      user.profilePic = profilePic || user.profilePic;
+      user.lastLogin = Date.now();
     }
 
-    user.password = await bcrypt.hash(password, 10);
-    user.lastLogin = Date.now();
     await user.save();
 
     const token = jwt.sign(
       { id: user._id, type: "user" },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     return res.status(200).json({
       token,
-      role: "user",
-      type: "user",
-      message: "Password set successfully",
+      isProfileComplete: user.isProfileComplete,
+      message: "Google login successful",
     });
   } catch (err) {
     next(err);
   }
 }
 
-export async function registerUser(req, res, next) {
+export async function completeProfile(req, res, next) {
   try {
-    const {
-      phone,
-      name,
-      password,
-      address,
-      place,
-      dateOfBirth,
-      gender,
-      bloodGroup,
-      isDonor,
-      lastDonationDate,
-    } = req.body;
+    const userId = req.user._id;
 
-    if (!phone || !name || !bloodGroup || !password) {
+    const { phone, bloodGroup, place } = req.body;
+
+    if (!phone || !bloodGroup) {
       return res.status(400).json({
-        message: "phone, name, blood group and password are required",
+        message: "phone and bloodGroup are required",
       });
     }
 
     if (!/^\d{10}$/.test(phone)) {
-      return res
-        .status(400)
-        .json({ message: "Phone number must be exactly 10 digits" });
+      return res.status(400).json({
+        message: "Phone must be 10 digits",
+      });
     }
 
     if (!VALID_BLOOD_GROUPS.includes(bloodGroup)) {
-      return res.status(400).json({ message: "Invalid blood group" });
+      return res.status(400).json({
+        message: "Invalid blood group",
+      });
     }
 
-    if (gender && !VALID_GENDERS.includes(gender)) {
-      return res.status(400).json({ message: "Invalid gender" });
-    }
-
-    // check existing user
-    const existing = await UserModel.findOne({ phone });
-    if (existing) {
-      return res
-        .status(400)
-        .json({ message: "User with this phone already exists" });
-    }
-
-    // build user object
-    const newUserData = {
+    // Check phone uniqueness
+    const existing = await UserModel.findOne({
       phone,
-      name,
-      address: address || undefined,
-      place: place || undefined,
-      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
-      gender: gender || undefined,
-      bloodGroup,
-      isDonor: typeof isDonor !== "undefined" ? isDonor : false,
-      lastDonationDate: lastDonationDate
-        ? new Date(lastDonationDate)
-        : undefined,
-      lastLogin: Date.now(),
-    };
+      _id: { $ne: userId },
+    });
 
-    if (req.file) {
-      newUserData.profilePic = `/public/images/profilepics/${req.file.filename}`;
+    if (existing) {
+      return res.status(400).json({
+        message: "Phone already in use",
+      });
     }
 
-    if (password) {
-      const saltRounds = 10;
-      newUserData.password = await bcrypt.hash(password, saltRounds);
-    }
-
-    const user = new UserModel(newUserData);
-    await user.save();
-
-    const token = jwt.sign(
-      { id: user._id, type: "user" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+    const user = await UserModel.findByIdAndUpdate(
+      userId,
+      {
+        phone,
+        bloodGroup,
+        place,
+        isProfileComplete: true,
+      },
+      { new: true },
     );
 
-    return res.status(201).json({
-      token,
-      role: "user",
-      type: "user",
-      message: "User registered successfully",
+    return res.status(200).json({
+      message: "Profile completed",
+      user,
     });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getUser(req, res, next) {
+  try {
+    const userId = req.user._id;
+    const user = await UserModel.findOne({
+      _id: userId,
+    }).select("-__v -createdAt -updatedAt");
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({ user });
   } catch (err) {
     next(err);
   }
@@ -245,19 +156,18 @@ export async function updateUser(req, res, next) {
       bloodGroup,
       isDonor,
       lastDonationDate,
-      password,
     } = req.body;
 
-    const user = await UserModel.findById(userId).select("+password");
+    const user = await UserModel.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
     // validations
     if (phone && !/^\d{10}$/.test(phone)) {
-      return res
-        .status(400)
-        .json({ message: "Phone number must be exactly 10 digits" });
+      return res.status(400).json({
+        message: "Phone number must be exactly 10 digits",
+      });
     }
 
     if (phone && phone !== user.phone) {
@@ -266,7 +176,9 @@ export async function updateUser(req, res, next) {
         _id: { $ne: userId },
       });
       if (existingUser) {
-        return res.status(400).json({ message: "Phone number already in use" });
+        return res.status(400).json({
+          message: "Phone number already in use",
+        });
       }
     }
 
@@ -279,6 +191,7 @@ export async function updateUser(req, res, next) {
     }
 
     const updateData = {};
+
     if (phone) updateData.phone = phone;
     if (name) updateData.name = name;
     if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
@@ -289,10 +202,6 @@ export async function updateUser(req, res, next) {
     if (bloodGroup) updateData.bloodGroup = bloodGroup;
     if (lastDonationDate)
       updateData.lastDonationDate = new Date(lastDonationDate);
-
-    if (password) {
-      updateData.password = await bcrypt.hash(password, 10);
-    }
 
     if (req.file) {
       // Delete old image if it exists
@@ -309,7 +218,7 @@ export async function updateUser(req, res, next) {
     const updatedUser = await UserModel.findByIdAndUpdate(userId, updateData, {
       new: true,
       runValidators: true,
-    }).select("-__v -password -createdAt -updatedAt");
+    }).select("-__v -createdAt -updatedAt");
 
     return res.status(200).json({
       message: "User updated successfully",
@@ -335,22 +244,6 @@ export async function deleteUser(req, res, next) {
     }
 
     return res.status(200).json({ message: "User deleted successfully" });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function getUser(req, res, next) {
-  try {
-    const userId = req.user._id;
-    const user = await UserModel.findOne({
-      _id: userId,
-    }).select("-__v -password -createdAt -updatedAt");
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    return res.status(200).json({ user });
   } catch (err) {
     next(err);
   }
@@ -400,7 +293,7 @@ export async function getDonors(req, res, next) {
         sortSpec.createdAt = -1;
     }
     const donors = await UserModel.find(query)
-      .select("-__v -password -lastLogin -createdAt -updatedAt")
+      .select("-__v -lastLogin -createdAt -updatedAt")
       .collation({ locale: "en", strength: 2 }) // Case-insensitive sorting
       .sort(sortSpec)
       .skip((page - 1) * limit)
@@ -418,32 +311,6 @@ export async function getDonors(req, res, next) {
       limit,
       donors,
     });
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function changeUserPassword(req, res, next) {
-  try {
-    if (!req.user) {
-      return res.status(401).json({ message: "Not authorized" });
-    }
-    const user = await UserModel.findById(req.user._id);
-    const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({ message: "Missing current or new password" });
-    }
-
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid current password" });
-    }
-
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-    return res.status(200).json({ message: "Password changed successfully" });
   } catch (err) {
     next(err);
   }

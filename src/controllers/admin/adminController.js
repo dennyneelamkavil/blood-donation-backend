@@ -28,7 +28,7 @@ export async function adminLogin(req, res, next) {
       const token = jwt.sign(
         { id: admin._id, type: "admin" },
         process.env.JWT_SECRET,
-        { expiresIn: "7d" }
+        { expiresIn: "7d" },
       );
 
       return res.status(200).json({
@@ -126,7 +126,7 @@ export async function getUsers(req, res, next) {
         sortSpec.createdAt = -1;
     }
     const users = await UserModel.find(query)
-      .select("-__v -password")
+      .select("-__v")
       .collation({ locale: "en", strength: 2 }) // Case-insensitive sorting
       .sort(sortSpec)
       .skip((page - 1) * limit)
@@ -159,7 +159,7 @@ export async function getUserById(req, res, next) {
     }
     const user = await UserModel.findOne({
       _id: userId,
-    }).select("-__v -password");
+    }).select("-__v");
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
@@ -175,7 +175,7 @@ export async function createUser(req, res, next) {
     const {
       phone,
       name,
-      password,
+      email,
       address,
       place,
       dateOfBirth,
@@ -186,15 +186,21 @@ export async function createUser(req, res, next) {
     } = req.body;
 
     if (!phone || !name || !bloodGroup) {
-      return res
-        .status(400)
-        .json({ message: "phone, name and blood group are required" });
+      return res.status(400).json({
+        message: "phone, name and blood group are required",
+      });
     }
 
     if (!/^\d{10}$/.test(phone)) {
-      return res
-        .status(400)
-        .json({ message: "Phone number must be exactly 10 digits" });
+      return res.status(400).json({
+        message: "Phone number must be exactly 10 digits",
+      });
+    }
+
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({
+        message: "Invalid email format",
+      });
     }
 
     if (!VALID_BLOOD_GROUPS.includes(bloodGroup)) {
@@ -205,18 +211,21 @@ export async function createUser(req, res, next) {
       return res.status(400).json({ message: "Invalid gender" });
     }
 
-    // check existing user
-    const existing = await UserModel.findOne({ phone });
+    // uniqueness checks
+    const existing = await UserModel.findOne({
+      $or: [{ phone }, ...(email ? [{ email }] : [])],
+    });
+
     if (existing) {
-      return res
-        .status(400)
-        .json({ message: "User with this phone already exists" });
+      return res.status(400).json({
+        message: "User with this phone/email already exists",
+      });
     }
 
-    // build user object
     const newUserData = {
       phone,
       name,
+      email: email || undefined,
       address: address || undefined,
       place: place || undefined,
       dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
@@ -226,31 +235,19 @@ export async function createUser(req, res, next) {
       lastDonationDate: lastDonationDate
         ? new Date(lastDonationDate)
         : undefined,
+      isProfileComplete: true,
     };
 
     if (req.file) {
       newUserData.profilePic = `/public/images/profilepics/${req.file.filename}`;
     }
 
-    if (password) {
-      const saltRounds = 10;
-      newUserData.password = await bcrypt.hash(password, saltRounds);
-    }
-
     const user = new UserModel(newUserData);
     await user.save();
 
-    const token = jwt.sign(
-      { id: user._id, type: "user" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
     return res.status(201).json({
-      token,
-      role: "user",
-      type: "user",
-      message: "User registered successfully",
+      message: "User created successfully",
+      user,
     });
   } catch (err) {
     next(err);
@@ -260,12 +257,14 @@ export async function createUser(req, res, next) {
 export async function updateUserById(req, res, next) {
   try {
     const { userId } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res.status(400).json({ message: "Invalid user ID" });
     }
 
     const {
       name,
+      email,
       dateOfBirth,
       gender,
       phone,
@@ -274,19 +273,42 @@ export async function updateUserById(req, res, next) {
       bloodGroup,
       isDonor,
       lastDonationDate,
-      password,
     } = req.body;
 
-    const user = await UserModel.findById(userId).select("+password");
+    const user = await UserModel.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // validations
+    if (user.googleId && email && email !== user.email) {
+      return res.status(400).json({
+        message: "Cannot change email for Google-linked account",
+      });
+    }
+
+    // EMAIL VALIDATION
+    if (email) {
+      if (!/^\S+@\S+\.\S+$/.test(email)) {
+        return res.status(400).json({ message: "Invalid email format" });
+      }
+
+      if (email !== user.email) {
+        const existingEmail = await UserModel.findOne({
+          email,
+          _id: { $ne: userId },
+        });
+
+        if (existingEmail) {
+          return res.status(400).json({ message: "Email already in use" });
+        }
+      }
+    }
+
+    // PHONE VALIDATION
     if (phone && !/^\d{10}$/.test(phone)) {
-      return res
-        .status(400)
-        .json({ message: "Phone number must be exactly 10 digits" });
+      return res.status(400).json({
+        message: "Phone number must be exactly 10 digits",
+      });
     }
 
     if (phone && phone !== user.phone) {
@@ -294,11 +316,15 @@ export async function updateUserById(req, res, next) {
         phone,
         _id: { $ne: userId },
       });
+
       if (existingUser) {
-        return res.status(400).json({ message: "Phone number already in use" });
+        return res.status(400).json({
+          message: "Phone number already in use",
+        });
       }
     }
 
+    // OTHER VALIDATIONS
     if (gender && !VALID_GENDERS.includes(gender)) {
       return res.status(400).json({ message: "Invalid gender" });
     }
@@ -308,6 +334,8 @@ export async function updateUserById(req, res, next) {
     }
 
     const updateData = {};
+
+    if (email) updateData.email = email;
     if (phone) updateData.phone = phone;
     if (name) updateData.name = name;
     if (dateOfBirth) updateData.dateOfBirth = new Date(dateOfBirth);
@@ -319,26 +347,22 @@ export async function updateUserById(req, res, next) {
     if (lastDonationDate)
       updateData.lastDonationDate = new Date(lastDonationDate);
 
-    if (password) {
-      updateData.password = await bcrypt.hash(password, 10);
-    }
-
+    // PROFILE PIC UPDATE
     if (req.file) {
-      // Delete old image if it exists
       if (user.profilePic) {
         const oldImagePath = path.join(process.cwd(), user.profilePic);
         fs.unlink(oldImagePath, (err) => {
           if (err) console.warn("Failed to delete old image:", err.message);
         });
       }
-      // Set new image path
+
       updateData.profilePic = `/public/images/profilepics/${req.file.filename}`;
     }
 
     const updatedUser = await UserModel.findByIdAndUpdate(userId, updateData, {
       new: true,
       runValidators: true,
-    }).select("-__v -password");
+    }).select("-__v");
 
     return res.status(200).json({
       message: "User updated successfully",

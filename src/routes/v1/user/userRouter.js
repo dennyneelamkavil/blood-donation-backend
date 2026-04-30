@@ -1,32 +1,22 @@
 import { Router } from "express";
 import {
-  changeUserPassword,
-  checkPasswordStatus,
+  completeProfile,
   deleteUser,
   getDonors,
   getUser,
-  registerUser,
-  setPassword,
+  googleLogin,
   updateUser,
-  userLogin,
 } from "../../../controllers/user/userController.js";
 import { profilePicUpload } from "../../../utils/multerConfig.js";
 import { authenticate } from "../../../middleware/authMiddleware.js";
 
 const userRouter = Router();
 
-userRouter.post("/login", userLogin);
-userRouter.post(
-  "/register",
-  profilePicUpload.single("profilePic"),
-  registerUser
-);
-userRouter.post("/set-password", setPassword);
-userRouter.get("/password-status", checkPasswordStatus);
+userRouter.post("/google-login", googleLogin);
+userRouter.post("/google-complete-profile", authenticate, completeProfile);
 
 userRouter.use(authenticate);
 
-userRouter.put("/change-password", changeUserPassword);
 userRouter.get("/get", getUser);
 userRouter.put("/update", profilePicUpload.single("profilePic"), updateUser);
 userRouter.delete("/delete", deleteUser);
