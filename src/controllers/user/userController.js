@@ -260,11 +260,50 @@ export async function getDonors(req, res, next) {
     page = page < 1 ? 1 : page;
     limit = limit < 1 ? 10 : limit;
 
+    // Dates for eligibility
+    const now = new Date();
+
+    const maleEligibleDate = new Date(now);
+    maleEligibleDate.setDate(now.getDate() - 90);
+
+    const femaleEligibleDate = new Date(now);
+    femaleEligibleDate.setDate(now.getDate() - 120);
+
     const query = {
       isDonor: true,
+
       $or: [
         { name: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
+      ],
+
+      // Donation eligibility filter
+      $and: [
+        {
+          $or: [
+            // Never donated before
+            { lastDonationDate: { $exists: false } },
+            { lastDonationDate: null },
+
+            // Male donors after 90 days
+            {
+              gender: "male",
+              lastDonationDate: { $lte: maleEligibleDate },
+            },
+
+            // Female donors after 120 days
+            {
+              gender: "female",
+              lastDonationDate: { $lte: femaleEligibleDate },
+            },
+
+            // Optional: include "other"
+            {
+              gender: "other",
+              lastDonationDate: { $lte: maleEligibleDate },
+            },
+          ],
+        },
       ],
     };
 
