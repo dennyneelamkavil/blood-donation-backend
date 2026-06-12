@@ -8,7 +8,7 @@ publicRouter.get("/test", (req, res) => {
     message: "Test route is working!",
     timestamp: new Date().toISOString(),
     version: "v1",
-    buildTag: "filter eligible donors by donation cooldown period",
+    buildTag: "add proof document upload API",
   });
 });
 
