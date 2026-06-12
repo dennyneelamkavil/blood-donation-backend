@@ -55,9 +55,19 @@ const userSchema = new Schema(
     lastDonationDate: {
       type: Date,
     },
+
     profilePic: {
       type: String,
     },
+
+    proofFront: {
+      type: String,
+    },
+
+    proofBack: {
+      type: String,
+    },
+
     lastLogin: {
       type: Date,
     },

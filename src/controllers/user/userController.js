@@ -242,6 +242,22 @@ export async function deleteUser(req, res, next) {
         if (err) console.warn("Failed to delete old image:", err.message);
       });
     }
+    if (deleted.proofFront) {
+      const frontPath = path.join(process.cwd(), deleted.proofFront);
+      fs.unlink(frontPath, (err) => {
+        if (err) {
+          console.warn("Failed to delete proof front:", err.message);
+        }
+      });
+    }
+    if (deleted.proofBack) {
+      const backPath = path.join(process.cwd(), deleted.proofBack);
+      fs.unlink(backPath, (err) => {
+        if (err) {
+          console.warn("Failed to delete proof back:", err.message);
+        }
+      });
+    }
 
     return res.status(200).json({ message: "User deleted successfully" });
   } catch (err) {
@@ -349,6 +365,67 @@ export async function getDonors(req, res, next) {
       totalPages,
       limit,
       donors,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function uploadProof(req, res, next) {
+  try {
+    const userId = req.user._id;
+
+    if (!req.files?.proofFront?.[0] && !req.files?.proofBack?.[0]) {
+      return res.status(400).json({
+        message: "No files uploaded",
+      });
+    }
+
+    const user = await UserModel.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const updateData = {};
+
+    if (req.files?.proofFront?.[0]) {
+      if (user.proofFront) {
+        const oldPath = path.join(process.cwd(), user.proofFront);
+
+        fs.unlink(oldPath, (err) => {
+          if (err) {
+            console.warn("Failed to delete old proof front:", err.message);
+          }
+        });
+      }
+
+      updateData.proofFront = `/public/images/proofs/${req.files.proofFront[0].filename}`;
+    }
+
+    if (req.files?.proofBack?.[0]) {
+      if (user.proofBack) {
+        const oldPath = path.join(process.cwd(), user.proofBack);
+
+        fs.unlink(oldPath, (err) => {
+          if (err) {
+            console.warn("Failed to delete old proof back:", err.message);
+          }
+        });
+      }
+
+      updateData.proofBack = `/public/images/proofs/${req.files.proofBack[0].filename}`;
+    }
+
+    const updatedUser = await UserModel.findByIdAndUpdate(userId, updateData, {
+      new: true,
+    }).select("-__v -createdAt -updatedAt");
+
+    return res.status(200).json({
+      message: "Proof uploaded successfully",
+      user: updatedUser,
     });
   } catch (err) {
     next(err);

@@ -39,3 +39,34 @@ export const profilePicUpload = multer({
     cb(null, true);
   },
 });
+
+// Saving proof images
+const proofUploadDir = path.join(process.cwd(), "public", "images", "proofs");
+fs.mkdirSync(proofUploadDir, { recursive: true });
+
+const proofStorage = multer.diskStorage({
+  destination(_req, _file, cb) {
+    cb(null, proofUploadDir);
+  },
+  filename(_req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext);
+
+    cb(null, `${base}_${timestamp()}${ext}`);
+  },
+});
+
+export const proofUpload = multer({
+  storage: proofStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter(_req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const allowed = [".jpg", ".jpeg", ".png", ".webp"];
+
+    if (!allowed.includes(ext)) {
+      return cb(new Error("Only image files are allowed"));
+    }
+
+    cb(null, true);
+  },
+});
